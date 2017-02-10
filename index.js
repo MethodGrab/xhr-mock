@@ -10,6 +10,8 @@ module.exports = {
 
   XMLHttpRequest: MockXMLHttpRequest,
 
+  _globalEventListeners: [],
+
   /**
    * Replace the native XHR with the mocked XHR
    * @returns {exports}
@@ -33,6 +35,7 @@ module.exports = {
    * @returns {exports}
    */
   reset: function() {
+    this._globalEventListeners = [];
     MockXMLHttpRequest.reset();
     return this;
   },
@@ -65,7 +68,7 @@ module.exports = {
       handler = method;
     }
 
-    MockXMLHttpRequest.addHandler(handler);
+    MockXMLHttpRequest.addHandler(handler, this._globalEventListeners);
 
     return this;
   },
@@ -118,6 +121,19 @@ module.exports = {
    */
   delete: function(url, fn) {
     return this.mock('DELETE', url, fn);
+  },
+
+  /**
+   * Add an event listener for all requests
+   * @param   {String}    event
+   * @param   {Function}  listener
+   * @returns {null}
+   */
+  addGlobalEventListener: function(event, listener) {
+    this._globalEventListeners.push({
+      event: event,
+      listener: listener
+    });
   }
 
 };

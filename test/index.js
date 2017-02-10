@@ -98,4 +98,53 @@ describe('xhr-mock', function() {
     })
   });
 
+  describe('.addGlobalEventListener()', function() {
+
+    it('should allow registering load global event listener', function(done) {
+      mock.setup();
+
+      mock.addGlobalEventListener('load', function(event) {
+        mock.teardown();
+        done();
+      });
+
+      mock.mock(function(req, res) {
+        return res;
+      });
+
+      var xhr = new XMLHttpRequest();
+      xhr.open('/');
+      xhr.send();
+    });
+
+    it('should call the global event listener for every request', function(done) {
+      var testCount = 2;
+      var globalLoadCount = 0;
+
+      mock.setup();
+
+      mock.addGlobalEventListener('load', function(event) {
+        globalLoadCount++;
+        if (globalLoadCount === testCount) {
+          mock.teardown();
+          done();
+        }
+      });
+
+      mock.mock(function(req, res) {
+        return res;
+      });
+
+      var xhr = new XMLHttpRequest();
+      xhr.open('/');
+      xhr.send();
+
+      var xhr2 = new XMLHttpRequest();
+      xhr2.open('/123');
+      xhr2.send();
+
+    });
+
+  });
+
 });
