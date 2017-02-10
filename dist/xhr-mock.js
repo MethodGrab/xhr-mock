@@ -11,6 +11,8 @@ module.exports = {
 
   XMLHttpRequest: MockXMLHttpRequest,
 
+  _globalEventListeners: [],
+
   /**
    * Replace the native XHR with the mocked XHR
    * @returns {exports}
@@ -34,6 +36,7 @@ module.exports = {
    * @returns {exports}
    */
   reset: function() {
+    this._globalEventListeners = [];
     MockXMLHttpRequest.reset();
     return this;
   },
@@ -66,7 +69,7 @@ module.exports = {
       handler = method;
     }
 
-    MockXMLHttpRequest.addHandler(handler);
+    MockXMLHttpRequest.addHandler(handler, this._globalEventListeners);
 
     return this;
   },
@@ -119,6 +122,19 @@ module.exports = {
    */
   delete: function(url, fn) {
     return this.mock('DELETE', url, fn);
+  },
+
+  /**
+   * Add an event listener for all requests
+   * @param   {String}    event
+   * @param   {Function}  listener
+   * @returns {null}
+   */
+  addGlobalEventListener: function(event, listener) {
+    this._globalEventListeners.push({
+      event: event,
+      listener: listener
+    });
   }
 
 };
@@ -341,12 +357,21 @@ MockXMLHttpRequest.STATE_DONE               = 4;
  */
 MockXMLHttpRequest.handlers = [];
 
+
+/**
+* The global event listeners
+* @private
+* @type {Array}
+*/
+MockXMLHttpRequest._globalEventListeners = [];
+
 /**
  * Add a request handler
  * @param   {function(MockRequest, MockResponse)} fn
  * @returns {MockXMLHttpRequest}
  */
-MockXMLHttpRequest.addHandler = function(fn) {
+MockXMLHttpRequest.addHandler = function(fn, globalEventListeners) {
+  MockXMLHttpRequest._globalEventListeners = globalEventListeners || [];
   MockXMLHttpRequest.handlers.push(fn);
   return this;
 };
@@ -433,11 +458,22 @@ MockXMLHttpRequest.prototype.trigger = function(event, eventDetails) {
   }
 
   if (this['on'+event]) {
-    this['on'+event]();
+    this['on'+event](eventDetails);
   }
 
   for (var x = 0; x < this._eventListeners.length; x++) {
     var eventListener = this._eventListeners[x];
+
+    if (eventListener.event === event) {
+      var eventListenerDetails = eventDetails || {};
+      eventListenerDetails.currentTarget = this;
+      eventListenerDetails.type = event;
+      eventListener.listener.call(this, eventListenerDetails);
+    }
+  }
+
+  for (var x = 0; x < MockXMLHttpRequest._globalEventListeners.length; x++) {
+    var eventListener = MockXMLHttpRequest._globalEventListeners[x];
 
     if (eventListener.event === event) {
       var eventListenerDetails = eventDetails || {};
@@ -479,40 +515,45 @@ MockXMLHttpRequest.prototype.send = function(data) {
 
     var response = MockXMLHttpRequest.handle(new MockRequest(self));
 
-    if (response && response instanceof MockResponse) {
+    Promise.resolve(response).then(function(response){
+      if (response && response instanceof MockResponse) {
 
-      var timeout = response.timeout();
+        var timeout = response.timeout();
 
-      if (timeout) {
+        if (timeout) {
 
-        //trigger a timeout event because the request timed out - wait for the timeout time because many libs like jquery and superagent use setTimeout to detect the error type
-        self._sendTimeout = setTimeout(function() {
-          self.readyState = MockXMLHttpRequest.STATE_DONE;
-          self.trigger('timeout');
-        }, typeof(timeout) === 'number' ? timeout : self.timeout+1);
+          //trigger a timeout event because the request timed out - wait for the timeout time because many libs like jquery and superagent use setTimeout to detect the error type
+          self._sendTimeout = setTimeout(function() {
+            self.readyState = MockXMLHttpRequest.STATE_DONE;
+            self.trigger('timeout');
+          }, typeof(timeout) === 'number' ? timeout : self.timeout+1);
+
+        } else {
+
+          //map the response to the XHR object
+          self.status             = response.status();
+          self._responseHeaders   = response.headers();
+          self.responseType       = 'text';
+          self.response           = response.body();
+          self.responseText       = response.body(); //TODO: detect an object and return JSON, detect XML and return XML
+          self.readyState         = MockXMLHttpRequest.STATE_DONE;
+
+          //trigger a load event because the request was received
+          self.trigger('load');
+
+        }
 
       } else {
 
-        //map the response to the XHR object
-        self.status             = response.status();
-        self._responseHeaders   = response.headers();
-        self.responseType       = 'text';
-        self.response           = response.body();
-        self.responseText       = response.body(); //TODO: detect an object and return JSON, detect XML and return XML
-        self.readyState         = MockXMLHttpRequest.STATE_DONE;
-
-        //trigger a load event because the request was received
-        self.trigger('load');
+        //trigger an error because the request was not handled
+        self.readyState = MockXMLHttpRequest.STATE_DONE;
+        self.trigger('error');
 
       }
-
-    } else {
-
-      //trigger an error because the request was not handled
+    }).catch(function(err) {
       self.readyState = MockXMLHttpRequest.STATE_DONE;
-      self.trigger('error');
-
-    }
+      self.trigger('error', err);
+    });
 
   }, 0);
 
