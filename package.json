@@ -30,6 +30,7 @@
   },
   "scripts": {
     "test": "mochify",
+    "build": "browserify index.js --standalone xhrMock --outfile dist/xhr-mock.js",
     "example.build": "mkdir -p build && browserify -r superagent -r ./index.js:xhr-mock -o build/build.js"
   },
   "license": "MIT"
