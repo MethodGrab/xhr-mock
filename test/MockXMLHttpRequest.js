@@ -1,3 +1,4 @@
+require('lie/polyfill');
 var assert              = require('assert');
 var MockXMLHttpRequest  = require('../lib/MockXMLHttpRequest');
 
@@ -260,6 +261,48 @@ describe('MockXMLHttpRequest', function() {
 
     });
 
+  });
+
+  describe('async response', function() {
+    it('when a response returns a promise wait for it to resolve', function(done) {
+      MockXMLHttpRequest.addHandler(function(req, res) {
+        return new Promise(function(resolve, reject) {
+          resolve(
+            res
+              .header('Content-Type', 'application/json')
+              .header('X-Powered-By', 'SecretSauce')
+          );
+        });
+      });
+
+      var xhr = new MockXMLHttpRequest();
+      xhr.open('/');
+      xhr.onload = function() {
+        assert.equal(xhr.getAllResponseHeaders(), 'content-type: application/json\r\nx-powered-by: SecretSauce\r\n');
+        done();
+      };
+      xhr.send();
+    });
+
+    it('when a response returns a promise that is rejected', function(done) {
+      MockXMLHttpRequest.addHandler(function(req, res) {
+        return new Promise(function(resolve, reject) {
+          reject(new Error('Some error occured'));
+        });
+      });
+
+      var xhr = new MockXMLHttpRequest();
+      xhr.open('/');
+      xhr.onerror = function(err) {
+        // FIXME: errors thrown here (eg assertions) are silenced and never seen
+        assert.equal(xhr.status, 0);
+        assert.equal(xhr.response, null);
+        assert.equal(err instanceof Error, true);
+        assert.equal(err.message === 'Some error occured', true);
+        done();
+      };
+      xhr.send();
+    });
   });
 
 });
